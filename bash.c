@@ -8,33 +8,102 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
+
+char** parse(char* line);
+char* expand(char* envVar);
 
 int main() {
-   char instr[256];                          // user input will never be longer than 255 chars
+   char input[256];            // user input will never be longer than 255 chars
    char *user = getenv("USER");
    char *pwd = getenv("PWD");
 
    do {
-      prompt();
-      // fgets adds newline at end of string, you'll need to remove it
-      // scanf
+      char** args;
+
+      printf("%s::%s$ ", user, pwd);
+      fgets(input, 256, stdin);              // grabs whole line including \n
+      args = parse(input);
 
 
-   } while(strncmp(instr, "exit", 4) != 0);  // run until exit command
+   } while(strncmp(input, "exit", 4) != 0);  // run until exit command
+
+   printf("Exiting shell...\n");
+}
 
    /*
-   Part 1: Parsing
-   Before the shell can begin executing commands, it needs to extract the command name, the arguments,input redirection (<), output redirection (>), piping (|), and background execution (&) indicators. Understand the following segments of the project prior to designing your parsing. The ordering of execution of many constructs may influence your parsing strategy. It is also critical that you understand how to parse arguments to a command and what delimits arguments.
+   Part 1: Parsing :: DONE!
+   Before the shell can begin executing commands, it needs to extract the
+   command name, the arguments,input redirection (<), output redirection (>),
+   piping (|), and background execution (&) indicators. Understand the
+   following segments of the project prior to designing your parsing. The
+   ordering of execution of many constructs may influence your parsing
+   strategy. It is also critical that you understand how to parse arguments to
+   a command and what delimits arguments.
    */
    char** parse(char* line) {
+      char** args;
+      int index = 0;
+      int flag = 1;
+      int i;
+      int pos = 0;
 
-   }
+      // dynamic allocation of args**
+      args = (char**)calloc(256, sizeof(char*));
+      for (i=0;i<256;i++)
+         args[i] = (char*)calloc(256,sizeof(char));
+
+      // THIS IS CONVOLTED BUT IT WORKS (THUS FAR)
+      for (i=0;i<strlen(line);i++) {
+         if (line[i] == '<' || line[i] == '>' || line[i] == '|' || line[i] == '&') {
+            if (!isspace(line[i-1]))
+               flag = 0;
+            if (flag == 0) {
+               strncpy(args[index],line+pos,(i-pos));
+               index++;
+            }
+            strncpy(args[index],line+i,1);
+            pos = i+1;
+            index++;
+            if (isspace(line[i+1]))
+               flag = 0;
+            else
+               flag = 1;
+         }
+         if (isspace(line[i])) {
+            if (flag == 1) {
+               strncpy(args[index],line+pos,(i-pos));
+               index++;
+            }
+            pos = i+1;
+            flag = 1;
+         }
+      }
+
+      // prints list of args for debugging purposes.
+      printf("Args: \'%s\'", args[0]);
+      for (i=1;i<index;i++) {
+         printf(", \'%s\'", args[i]);
+      }
+      printf("\n");
+
+      return args;
+
+   }  // end of parse function
+
 
    /*
    Part 2: Environmental Variables
-   Every program runs in its own environment. One example of an environmental variable is $USER, which expands to the current username. For example, if my current username is 'dennis', typing: => echo $USER
+   Every program runs in its own environment. One example of an environmental
+   variable is $USER, which expands to the current username. For example, if my
+   current username is 'dennis', typing: => echo $USER
    outputs: dennis
-   In the bash shell, you can type 'env' to see a list of all your environmental variables. You will need to use and expand various environmental variables in your shell, and you may use the getenv() library call to do so. The getenv() procedure searchs the environment list for a string that matches the string pointed to by name. The strings are of the form: NAME = VALUE
+   In the bash shell, you can type 'env' to see a list of all your
+   environmental variables. You will need to use and expand various
+   environmental variables in your shell, and you may use the getenv() library
+   call to do so. The getenv() procedure searchs the environment list for a
+   string that matches the string pointed to by name. The strings are of the
+   form: NAME = VALUE
    */
 
    char* expand(char* envVar) {
@@ -43,19 +112,21 @@ int main() {
 
    /*
    Part 3: Prompt
-   The prompt should always indicate to the user the absolute working directory, who they are, and the machine name. Remember that cd can update the working directory. This is the format:
+   The prompt should always indicate to the user the absolute working
+   directory, who they are, and the machine name. Remember that cd can update
+   the working directory. This is the format:
    USER@MACHINE :: PWD =>
    Example:
    dennis@linprog3 :: /home/grads/dennis/cop4610t =>
    */
 
-   void prompt() {
-      printf("%s::%s$ ", user, pwd);
-   }
+   // done as part of main function
 
    /*
    Part 4: Path Resolution
-   You will need to convert different file path naming conventions to absolute path names. You can assume that directories are separated with a single forward slash (/).
+   You will need to convert different file path naming conventions to absolute
+   path names. You can assume that directories are separated with a single
+   forward slash (/).
 
    • Directories that can occur anywhere in the path
    ◦ ..
@@ -66,7 +137,8 @@ int main() {
    ◦ DIRNAME
       ▪ Expands to the child of the current working directory named DIRNAME
       ▪ Signal an error if DIRNAME doesn't exist
-      ▪ Signal an error if DIRNAME occurs before the final item and is not a directory
+      ▪ Signal an error if DIRNAME occurs before the final item and is not a
+      directory
    • Directories that can only occur at the start of the path
    ◦ ~
       ▪ Expands to $HOME directory
@@ -77,21 +149,32 @@ int main() {
       ▪ Expands to the child of the current working directory named FILENAME
       ▪ Signal an error if FILENAME doesn't exist
 
-   You will need to handle commands slightly differently. If the path contains a '/', the path resolution is handled as above, signaling an error if the end target does not exist or is not a file. Otherwise, if the path is just a single name, then you will need to prefix it with each location in the $PATH and search for file existence. The first file in the concatenated path list to exist is the path of the command. If none of the files exist, signal an error.
+   You will need to handle commands slightly differently. If the path contains
+   a '/', the path resolution is handled as above, signaling an error if the
+   end target does not exist or is not a file. Otherwise, if the path is just a
+   single name, then you will need to prefix it with each location in the $PATH
+   and search for file existence. The first file in the concatenated path list
+   to exist is the path of the command. If none of the files exist, signal an
+   error.
    */
 
 
 
    /*
    Part 5: Execution
-   You will need to execute simple commands. First resolve the path as above. If no errors occur, you will need to fork out a child process and then use execv to execute the path within the child process.
+   You will need to execute simple commands. First resolve the path as above.
+   If no errors occur, you will need to fork out a child process and then use
+   execv to execute the path within the child process.
    */
 
 
 
    /*
    Part 6: I/O Redirection
-   Once the shell can handle simple execution, you'll need to add the ability to redirect input and output from and to files. The following rules describe the expected behavior, note there does not have to be whitespace between the command/file and the redirection symbol.
+   Once the shell can handle simple execution, you'll need to add the ability
+   to redirect input and output from and to files. The following rules describe
+   the expected behavior, note there does not have to be whitespace between the
+   command/file and the redirection symbol.
       • CMD > FILE
          ◦ CMD redirects its output to FILE
          ◦ Create FILE if it does not exist
@@ -112,7 +195,9 @@ int main() {
 
    /*
    Part 7: Pipes
-   After it can handle redirection, your shell is capable of emulating the functionality of pipes. Pipes should behave in the following manner (again, there does not have to be whitespace between the commands and the symbol):
+   After it can handle redirection, your shell is capable of emulating the
+   functionality of pipes. Pipes should behave in the following manner (again,
+   there does not have to be whitespace between the commands and the symbol):
       • CMD1 | CMD2
          ◦ CMD1 redirects its standard output to CMD2's standard input
       • CMD1 | CMD2 | CMD3
@@ -133,7 +218,8 @@ int main() {
 
    /*
    Part 8: Background Processing
-   You will need to handle execution for background processes. There are several ways this can be encountered:
+   You will need to handle execution for background processes. There are
+   several ways this can be encountered:
       • CMD &
          ◦ Execute CMD in the background
          ◦ When execution starts, print
@@ -177,7 +263,8 @@ int main() {
          Exiting Shell....
          (shell terminates)
    • cd PATH
-      ◦ Changes the present working directory according to the path resolution above
+      ◦ Changes the present working directory according to the path resolution
+      above
       ◦ If no arguments are supplied, it behaves as if $HOME is the argument
       ◦ Signal an error if more than one argument is present
       ◦ Signal an error if the target is not a directory
@@ -195,7 +282,8 @@ int main() {
       ◦ execute the rest of the arguments as per typical execution
          ▪ You don’t have to worry about nesting with other built-ins
       ◦ Record the end time using gettimeofday()
-      ◦ Output the elapsed time in the format of s.us where s is the number of seconds and us is the number of micro seconds (0 padded)
+      ◦ Output the elapsed time in the format of s.us where s is the number of
+      seconds and us is the number of micro seconds (0 padded)
       ◦ Example
          dennis@linprog3 :: /home/grads => etime sleep 1
          Elapsed Time: 1.000000s
@@ -217,6 +305,3 @@ int main() {
             cancelled_write_bytes: 0
 
    */
-   
-
-}

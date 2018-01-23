@@ -2,16 +2,21 @@
 // COP4610 Intro to Operating Systems
 // Amber Mickler and Benjamin Hybart
 
-
-//TODO: the whole thing :D
+//DONE: Parse splits line into arguments
+//TODO: resolve pathfiles, expand env vars, etc
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
 
-char** parse(char* line);
+typedef enum {false, true} bool;
+
+
+int isSpecial(char c);
+void parse(char* line);
 char* expand(char* envVar);
+
 
 int main() {
    char input[256];            // user input will never be longer than 255 chars
@@ -19,11 +24,11 @@ int main() {
    char *pwd = getenv("PWD");
 
    do {
-      char** args;
 
       printf("%s::%s$ ", user, pwd);
       fgets(input, 256, stdin);              // grabs whole line including \n
-      args = parse(input);
+      parse(input);
+      // do stuff in parse
 
 
    } while(strncmp(input, "exit", 4) != 0);  // run until exit command
@@ -31,8 +36,15 @@ int main() {
    printf("Exiting shell...\n");
 }
 
+int isSpecial(char c) {
+   if (c == '<' || c == '>' || c == '|' || c == '&')
+      return 1;
+   else
+      return 0;
+}
+
    /*
-   Part 1: Parsing :: DONE!
+   Part 1: Parsing :: needs work
    Before the shell can begin executing commands, it needs to extract the
    command name, the arguments,input redirection (<), output redirection (>),
    piping (|), and background execution (&) indicators. Understand the
@@ -41,53 +53,95 @@ int main() {
    strategy. It is also critical that you understand how to parse arguments to
    a command and what delimits arguments.
    */
-   char** parse(char* line) {
-      char** args;
-      int index = 0;
-      int flag = 1;
-      int i;
-      int pos = 0;
+void parse(char* line) {
+   char** args;
+   int index = 0;
+   int flag = 0;
+   int special = 0;
+   int i;
+   int pos = 0;
 
-      // dynamic allocation of args**
-      args = (char**)calloc(256, sizeof(char*));
-      for (i=0;i<256;i++)
-         args[i] = (char*)calloc(256,sizeof(char));
+   // dynamic allocation of args**
+   args = (char**)calloc(256, sizeof(char*));
+   for (i=0;i<256;i++)
+      args[i] = (char*)calloc(256,sizeof(char));
 
-      // THIS IS CONVOLTED BUT IT WORKS (THUS FAR)
-      for (i=0;i<strlen(line);i++) {
-         if (line[i] == '<' || line[i] == '>' || line[i] == '|' || line[i] == '&') {
-            if (!isspace(line[i-1]))
-               flag = 0;
-            if (flag == 0) {
-               strncpy(args[index],line+pos,(i-pos));
-               index++;
-            }
-            strncpy(args[index],line+i,1);
-            pos = i+1;
+   // parsing into a list of arguments
+   for (i=0;i<strlen(line);i++) {
+      if ((isspace(line[i])!=0) && isspace(line[i-1])) {
+         printf("%c.", line[i]);
+         pos = i;
+      }
+      if (isSpecial(line[i])) {
+         if (!isspace(line[i-1])) {
+            strncpy(args[index],line+pos,i-pos);
+            printf("1 %s\n", args[index]);
             index++;
-            if (isspace(line[i+1]))
-               flag = 0;
-            else
-               flag = 1;
          }
-         if (isspace(line[i])) {
-            if (flag == 1) {
-               strncpy(args[index],line+pos,(i-pos));
-               index++;
-            }
-            pos = i+1;
-            flag = 1;
+         strncpy(args[index],line+i,1);
+         printf("2 %s\n", args[index]);
+         index++;
+         pos = i + 1;
+         if (isspace(pos))
+            index--;
+
+         //printf("next char: %c", line[pos]);
+      }
+      else if (isspace(line[i]) && !isspace(line[i-1]) && i > 0) {
+         flag = 1;
+         if (isSpecial(line[pos]) && !isspace(line[pos+1])) {
+            strncpy(args[index],line+pos,1);
+            index++;
+            pos++;
          }
+         strncpy(args[index],line+pos, i-pos);
+         printf("3 %s\n", args[index]);
+
+         index++;
       }
 
-      // prints list of args for debugging purposes.
-      printf("Args: \'%s\'", args[0]);
-      for (i=1;i<index;i++) {
-         printf(", \'%s\'", args[i]);
+      while (isspace(line[i])) {
+         printf("\nloop");
+         i++;
       }
-      printf("\n");
 
-      return args;
+      if (flag) {
+         pos = i;
+         flag = 0;
+      }
+
+   }
+
+   // prints list of args for debugging purposes.
+   printf("Args: \'%s\'", args[0]);
+   for (i=1;i<index;i++) {
+      printf(", \'%s\'", args[i]);
+   }
+   printf("\n");
+
+   // Expand environmental variables
+   for (i=0;i<index;i++) {
+      if (args[i][0] == '$') {
+         strncpy(args[i], args[i]+1, 255);
+         printf("\n%s\n", args[i]);
+         args[i] = getenv(args[i]);
+         printf("\n%s\n", args[i]);
+      }
+   }
+
+
+
+
+
+   /* DO STUFF HERE */
+
+
+
+
+   // free memory - giving a seg fault sometimes?
+   for (i = 0; i < 256; i++)
+      free(args[i]);
+   free(args);
 
    }  // end of parse function
 
@@ -106,9 +160,9 @@ int main() {
    form: NAME = VALUE
    */
 
-   char* expand(char* envVar) {
+char* expand(char* envVar) {
 
-   }
+}
 
    /*
    Part 3: Prompt

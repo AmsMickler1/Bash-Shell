@@ -98,26 +98,18 @@ void parse(char* line) {
    }
    printf("\n");
 
-   // Expand environmental variables
-   for (i=0;i<index;i++) {
-      if (args[i][0] == '$') {
-         args[i]++;
-         printf("\n%s\n", args[i]);
-         args[i] = *getenv(args[i]);
-         printf("\n%s\n", args[i]);
-      }
+   // Expands home variables for debugging
+   for (i = 0; i < index; i++) {
+       if (args[i][0] == '$')
+       printf("%s\n",expand(args[i]));
    }
-
-
-
 
 
    /* DO STUFF HERE */
 
 
 
-   printf("Here!");
-   fflush(stdout);
+
    // free memory - giving a seg fault sometimes?
    for (i = 0; i < 256; i++)
       free(args[i]);
@@ -139,6 +131,15 @@ void parse(char* line) {
    string that matches the string pointed to by name. The strings are of the
    form: NAME = VALUE
    */
+
+   // should work. When executing run a for loop to check for $ then call this
+
+   char* expand(char* envVar) {
+       printf("\n%s\n", envVar);        // Delete later
+       envVar++;                        // Drops leading $
+       return getenv(envVar);
+   }
+
 
    /*
    Part 3: Prompt

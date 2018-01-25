@@ -57,7 +57,6 @@ void parse(char* line) {
    char** args;
    int index = 0;
    int flag = 0;
-   int special = 0;
    int i;
    int pos = 0;
 
@@ -68,49 +67,29 @@ void parse(char* line) {
 
    // parsing into a list of arguments
    for (i=0;i<strlen(line);i++) {
-      if ((isspace(line[i])!=0) && isspace(line[i-1])) {
-         printf("%c.", line[i]);
-         pos = i;
+      while (isspace(line[i])) {
+          i++;
+          pos = i;
+      }
+      while (!isspace(line[i]) && !isSpecial(line[i])) {
+          i++;
+          flag = 1;
+      }
+      if (flag) {
+          strncpy(args[index], line+pos, i-pos);
+          index++;
+          flag = 0;
+          i--;
       }
       if (isSpecial(line[i])) {
-         if (!isspace(line[i-1])) {
-            strncpy(args[index],line+pos,i-pos);
-            printf("1 %s\n", args[index]);
-            index++;
-         }
-         strncpy(args[index],line+i,1);
-         printf("2 %s\n", args[index]);
-         index++;
-         pos = i + 1;
-         if (isspace(pos))
-            index--;
-
-         //printf("next char: %c", line[pos]);
+          strncpy(args[index], line+i, 1);
+          index++;
+          pos = i+1;
       }
-      else if (isspace(line[i]) && !isspace(line[i-1]) && i > 0) {
-         flag = 1;
-         if (isSpecial(line[pos]) && !isspace(line[pos+1])) {
-            strncpy(args[index],line+pos,1);
-            index++;
-            pos++;
-         }
-         strncpy(args[index],line+pos, i-pos);
-         printf("3 %s\n", args[index]);
-
-         index++;
-      }
-
-      while (isspace(line[i])) {
-         printf("\nloop");
-         i++;
-      }
-
-      if (flag) {
-         pos = i;
-         flag = 0;
-      }
-
    }
+   // side effect: Last argument is always empty
+   // solution: make last argument null arg for execv later on
+   strncpy(args[index-1],"NULL", 4);
 
    // prints list of args for debugging purposes.
    printf("Args: \'%s\'", args[0]);
@@ -122,9 +101,9 @@ void parse(char* line) {
    // Expand environmental variables
    for (i=0;i<index;i++) {
       if (args[i][0] == '$') {
-         strncpy(args[i], args[i]+1, 255);
+         args[i]++;
          printf("\n%s\n", args[i]);
-         args[i] = getenv(args[i]);
+         args[i] = *getenv(args[i]);
          printf("\n%s\n", args[i]);
       }
    }
@@ -137,7 +116,8 @@ void parse(char* line) {
 
 
 
-
+   printf("Here!");
+   fflush(stdout);
    // free memory - giving a seg fault sometimes?
    for (i = 0; i < 256; i++)
       free(args[i]);
@@ -159,10 +139,6 @@ void parse(char* line) {
    string that matches the string pointed to by name. The strings are of the
    form: NAME = VALUE
    */
-
-char* expand(char* envVar) {
-
-}
 
    /*
    Part 3: Prompt

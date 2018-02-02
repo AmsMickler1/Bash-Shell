@@ -19,7 +19,7 @@ typedef enum {false, true} bool;
 int isSpecial(char c);
 void parse(char* line);
 char* expand(char* envVar);
-void execute(char** cmd, char* path = getenv(HOME));
+void execute(char** cmd/*, char* path = getenv("HOME")*/);
 int count(char* path);
 char* resolve(char* path);
 
@@ -30,6 +30,11 @@ int main() {
     char *user = getenv("USER");
     char *machine = getenv("MACHINE");
     char *pwd = getenv("PWD");
+
+    char* test="../";
+    char* c;
+    c=resolve(test);
+    printf("%s\n", c);
 
     do {
         //USER@MACHINE :: PWD =>
@@ -262,11 +267,12 @@ You will need to execute simple commands. First resolve the path as above.
 If no errors occur, you will need to fork out a child process and then use
 execv() to execute the path within the child process.
 */
-void execute(char** cmd, char* path) {
+void execute(char** cmd/*, char* path*/) {
     //char** is array of command and args (if any)
     // the command being executed should always be cmd[0]
     // char** cmd is a copy of args, so we can change it however we want
 
+    int status;
     int inredir;    // input redirect flag
     int oredir;     // output redirect flag
     int pipe;       // pipe flag

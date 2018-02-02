@@ -9,6 +9,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 typedef enum {false, true} bool;
 
@@ -16,6 +19,7 @@ typedef enum {false, true} bool;
 int isSpecial(char c);
 void parse(char* line);
 char* expand(char* envVar);
+void execute(char** cmd /*,char* path*/);
 
 
 int main() {
@@ -28,9 +32,14 @@ int main() {
         //USER@MACHINE :: PWD =>
         //Example:
         //dennis@linprog3 :: /home/grads/dennis/cop4610t =>
+
+        // Maybe grab PWD var here so it updates every loop?
+
         printf("%s@%s::%s$ ", user, machine, pwd);
         fgets(input, 256, stdin);              // grabs whole line including \n
-        parse(input);
+
+        if (strncmp(input,"exit",4) != 0)   // parse was trying to execute "exit" and was duplicating things later
+            parse(input);
         // do stuff in parse
 
 
@@ -41,21 +50,12 @@ int main() {
 
 int isSpecial(char c) {
     if (c == '<' || c == '>' || c == '|' || c == '&')
-    return 1;
+        return 1;
     else
-    return 0;
-}
+        return 0;
+}   // Returns 1 if char is a special char
 
-/*
-Part 1: Parsing :: Works, pls try to break it
-Before the shell can begin executing commands, it needs to extract the
-command name, the arguments,input redirection (<), output redirection (>),
-piping (|), and background execution (&) indicators. Understand the
-following segments of the project prior to designing your parsing. The
-ordering of execution of many constructs may influence your parsing
-strategy. It is also critical that you understand how to parse arguments to
-a command and what delimits arguments.
-*/
+
 void parse(char* line) {
     char** args;
     int index = 0;
@@ -101,16 +101,9 @@ void parse(char* line) {
     }
     printf("\n");
 
-    // Expands home variables for debugging
-    for (i = 0; i < index; i++) {
-        if (args[i][0] == '$')
-        printf("%s\n",expand(args[i]));
-    }
-
 
     /* DO STUFF HERE */
-
-
+    execute(args);
 
 
     // free memory
@@ -124,7 +117,6 @@ void parse(char* line) {
 // Returns expanded environmental variable when given a string (ex: "$HOME")
 // When executing run a for loop to check for $ then call this
 char* expand(char* envVar) {
-    printf("\n%s\n", envVar);        // Delete later
     envVar++;                        // Drops leading $
     return getenv(envVar);
 }
@@ -173,7 +165,43 @@ You will need to execute simple commands. First resolve the path as above.
 If no errors occur, you will need to fork out a child process and then use
 execv() to execute the path within the child process.
 */
+void execute(char** cmd /*,char* path*/) {      //copied from slide, not sure if worky
+    int status;
+    //char** is array of command and args (if any)
+    // the command being executed should always be cmd[0]
+    // char** cmd is a copy of args, so we can change it however we want
 
+    int i;
+    for (i=0;i<256;i++) {
+        // if path or command
+            // resolve path
+
+        // if is isSpecial
+            // check for syntax
+
+        if (cmd[i][0] == '$')
+            strncpy(cmd[i],expand(cmd[i]), 255);
+        if (strcmp(cmd[i],"NULL") == 0)
+            cmd[i] = NULL;
+    }
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        //Error
+        exit(1);
+    }
+    else if (pid == 0) {
+        //Child
+        execv(cmd[0], cmd);
+        printf("Problem executing %s\n", cmd[0]);
+        exit(1);
+    }
+    else {
+        //Parent
+        waitpid(pid, &status, 0);
+    }
+
+}
 
 
 /*

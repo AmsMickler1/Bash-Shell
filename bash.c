@@ -20,6 +20,9 @@ int isSpecial(char c);
 void parse(char* line);
 char* expand(char* envVar);
 void execute(char** cmd, char* path = getenv(HOME));
+int count(char* path);
+char* resolve(char* path);
+
 
 
 int main() {
@@ -157,6 +160,100 @@ to exist is the path of the command. If none of the files exist, signal an
 error.
 */
 
+
+//resolve function definition---needs to account for cascading ../ with itself and other directories
+char* resolve(char* path) {
+    //copies working directory
+    char* temp;
+    temp=(char*)malloc(200);
+
+    char * cwd;
+    cwd = (char*)malloc(200);
+
+    char* dir;
+    dir=(char*)malloc(1);
+
+    int i, j, k;
+    int track;
+
+    i=0;
+
+    /*if command that must be located $PATH do stuff here*/
+
+    if(path[0]=='~'){
+        strcpy(temp, getenv("HOME"));
+        i=1;
+    }
+    else{
+        strcpy(temp, getenv("PWD"));
+    }
+
+    //if absolute path (e.g. pathname begins with /) update PWD to change directory
+    if(path[0]=='/'){
+        strcpy(cwd, path);
+        return cwd;
+    }
+
+    else{
+        while(i<strlen(path)){
+            //copy path over until first /
+            if(path[i]!='/'){
+                dir[0]=path[i];
+            }
+            if(dir[0]=='.' && path[i+1]=='.'){
+                track=count(temp);    //will count slashes in current directory
+                //copy one less directory
+                k=0;
+                for(j=0; j < strlen(temp); j++){
+                    cwd[j]=temp[j];
+                    if(cwd[j]=='/'){
+                        k++;
+                    }
+                    if(k==track)
+                    break;
+
+                }
+            }
+
+            //if going down a directory (e.g. cd directory)
+            else if(path[i]!='.'){
+                //add on the directory to the current working directory.
+
+                //strcpy(cwd, temp);
+                if(i==0||path[i]=='/'){
+                    strcat(cwd, "/");
+                }
+                if(path[i]!='/')
+                    strcat(cwd, dir);
+            }
+            //increment i
+            i++;
+        } //end while loop
+    } //end else statement
+
+    if(strcmp(path, "../") && strcmp(path, "..")){
+        strcat(temp, cwd);  //copy final temp into current working directory
+        return temp;
+    }
+    else{
+        while(cwd[strlen(cwd)-1]=='/')
+        cwd[strlen(cwd)-1]='\0';
+        return cwd;
+    }
+}  //end function
+
+
+//count the number of /'s in the path---WORKS PROPERLY
+int count(char* path) {
+    int i;
+    int j=0;
+    for(i=0; i < strlen(path); i++){
+        if(path[i]=='/')
+        j++;
+    }
+
+    return j;
+}
 
 
 /*

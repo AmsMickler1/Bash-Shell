@@ -19,7 +19,7 @@ typedef enum {false, true} bool;
 int isSpecial(char c);
 void parse(char* line);
 char* expand(char* envVar);
-void execute(char** cmd /*,char* path*/);
+void execute(char** cmd, char* path = getenv(HOME));
 
 
 int main() {
@@ -165,11 +165,15 @@ You will need to execute simple commands. First resolve the path as above.
 If no errors occur, you will need to fork out a child process and then use
 execv() to execute the path within the child process.
 */
-void execute(char** cmd /*,char* path*/) {      //copied from slide, not sure if worky
-    int status;
+void execute(char** cmd, char* path) {
     //char** is array of command and args (if any)
     // the command being executed should always be cmd[0]
     // char** cmd is a copy of args, so we can change it however we want
+
+    int inredir;    // input redirect flag
+    int oredir;     // output redirect flag
+    int pipe;       // pipe flag
+    int background; // background flag
 
     int i;
     for (i=0;i<256;i++) {
@@ -178,6 +182,11 @@ void execute(char** cmd /*,char* path*/) {      //copied from slide, not sure if
 
         // if is isSpecial
             // check for syntax
+            // set redirect flag input
+            // set redirect flag output
+            // set pipe flag
+            // set background flag
+
 
         if (cmd[i][0] == '$')
             strncpy(cmd[i],expand(cmd[i]), 255);
@@ -192,6 +201,11 @@ void execute(char** cmd /*,char* path*/) {      //copied from slide, not sure if
     }
     else if (pid == 0) {
         //Child
+
+        // if input redirects
+
+        // if output redirects
+
         execv(cmd[0], cmd);
         printf("Problem executing %s\n", cmd[0]);
         exit(1);

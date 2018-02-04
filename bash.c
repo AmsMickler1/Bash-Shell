@@ -2,8 +2,8 @@
 // COP4610 Intro to Operating Systems
 // Amber Mickler and Benjamin Hybart
 
-//DONE: Parse splits line into arguments, expand env vars
-//TODO: resolve pathfiles, redirection, execution, background, pipes
+//DONE: Parse splits line into arguments, expand env vars, output redirection, execution (mostly)
+//TODO: resolve pathfiles, input redirection, background, pipes
 
 #include <stdio.h>
 #include <string.h>
@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 
 typedef enum {false, true} bool;
 
@@ -29,7 +30,7 @@ int main() {
     char input[256];            // user input will never be longer than 255 chars
     char *user = getenv("USER");
     char *machine = getenv("MACHINE");
-    char *pwd = getenv("PWD");
+    char *pwd;
 
     char* test="../";
     char* c;
@@ -37,24 +38,17 @@ int main() {
     printf("%s\n", c);
 
     do {
-        //USER@MACHINE :: PWD =>
-        //Example:
-        //dennis@linprog3 :: /home/grads/dennis/cop4610t =>
-
-        // Maybe grab PWD var here so it updates every loop?
-
+        // Grab PWD var here so it updates every loop
+        pwd = getenv("PWD");
         printf("%s@%s::%s$ ", user, machine, pwd);
         fgets(input, 256, stdin);              // grabs whole line including \n
 
-        if (strncmp(input,"exit",4) != 0)   // parse was trying to execute "exit" and was duplicating things later
-            parse(input);
+        parse(input);
         // do stuff in parse
 
-
-    } while(strncmp(input, "exit", 4) != 0);  // run until exit command
-
-    printf("Exiting shell...\n");
+    } while(1);     //if exit is entered parse will close the shell
 }
+
 
 int isSpecial(char c) {
     if (c == '<' || c == '>' || c == '|' || c == '&')
@@ -110,8 +104,29 @@ void parse(char* line) {
     printf("\n");
 
 
-    /* DO STUFF HERE */
-    execute(args);
+    /* BUILT INS */
+    if (strncmp(args[0], "exit", 4) == 0) {
+        printf("Exiting shell...\n");
+        exit(0);
+    }
+    else if (strncmp(args[0], "cd", 2) == 0) {
+        //input += 2;     // gets rid of "cd"
+        //char* rpath = resolve(input);
+        //if ( valid directory )
+        //    setenv("PWD", rpath);
+    }
+    else if (strncmp(args[0], "echo", 4) == 0) {
+
+    }
+    else if (strncmp(args[0], "etime", 5) == 0) {
+
+    }
+    else if (strncmp(args[0], "io", 2) == 0) {
+
+    }
+    else {
+        execute(args);
+    }
 
 
     // free memory
@@ -128,42 +143,6 @@ char* expand(char* envVar) {
     envVar++;                        // Drops leading $
     return getenv(envVar);
 }
-
-/*
-Part 4: Path Resolution
-You will need to convert different file path naming conventions to absolute
-path names. You can assume that directories are separated with a single
-forward slash (/).
-
-• Directories that can occur anywhere in the path
-    ◦  ..
-        ▪ Expands to the parent of the current working directory
-        ▪ Signal an error if used on root directory
-    ◦ .
-        ▪ Expands to the current working directory (the directory doesn't change)
-    ◦ DIRNAME
-        ▪ Expands to the child of the current working directory named DIRNAME
-        ▪ Signal an error if DIRNAME doesn't exist
-        ▪ Signal an error if DIRNAME occurs before the final item and is not a
-            directory
-• Directories that can only occur at the start of the path
-    ◦ ~
-        ▪ Expands to $HOME directory
-    ◦ /
-        ▪ Root directory
-• Files that can only occur at the end of the path
-    ◦ FILENAME
-        ▪ Expands to the child of the current working directory named FILENAME
-        ▪ Signal an error if FILENAME doesn't exist
-
-You will need to handle commands slightly differently. If the path contains
-a '/', the path resolution is handled as above, signaling an error if the
-end target does not exist or is not a file. Otherwise, if the path is just a
-single name, then you will need to prefix it with each location in the $PATH
-and search for file existence. The first file in the concatenated path list
-to exist is the path of the command. If none of the files exist, signal an
-error.
-*/
 
 
 //resolve function definition---needs to account for cascading ../ with itself and other directories
@@ -261,41 +240,13 @@ int count(char* path) {
 }
 
 
-/*
-Part 5: Execution
-You will need to execute simple commands. First resolve the path as above.
-If no errors occur, you will need to fork out a child process and then use
-execv() to execute the path within the child process.
-*/
 void execute(char** cmd/*, char* path*/) {
     //char** is array of command and args (if any)
     // the command being executed should always be cmd[0]
     // char** cmd is a copy of args, so we can change it however we want
 
     int status;
-    int inredir;    // input redirect flag
-    int oredir;     // output redirect flag
-    int pipe;       // pipe flag
-    int background; // background flag
-
-    int i;
-    for (i=0;i<256;i++) {
-        // if path or command
-            // resolve path
-
-        // if is isSpecial
-            // check for syntax
-            // set redirect flag input
-            // set redirect flag output
-            // set pipe flag
-            // set background flag
-
-
-        if (cmd[i][0] == '$')
-            strncpy(cmd[i],expand(cmd[i]), 255);
-        if (strcmp(cmd[i],"NULL") == 0)
-            cmd[i] = NULL;
-    }
+    int count = 0;
 
     pid_t pid = fork();
     if (pid == -1) {
@@ -304,45 +255,95 @@ void execute(char** cmd/*, char* path*/) {
     }
     else if (pid == 0) {
         //Child
+        int inredir = 0;    // input redirect flag
+        int oredir = 0;     // output redirect flag
+        int pipe = 0;       // pipe flag
+        int background = 0; // background flag
+
+        char* input = NULL;        // input redirection filepath
+        char* output = NULL;       // output redirection filepath
+
+        int i;
+        for (i=0;i<256;i++) {
+            count++;
+            // If path can be resolved, resolve path and update cmd array
+
+            //char* temp = resolve(cmd[i]);
+            //if (temp != NULL) {
+            //    strncpy(cmd[i],temp,strlen(temp));
+            //}
+
+            // if is isSpecial
+            if (isSpecial(cmd[i][0])) {
+                // Check Syntax
+                if (cmd[i][0] != '&' && (i == 0 || strcmp(cmd[i+1],"NULL") == 0)) {
+                    printf("Error: Invalid syntax.\n");
+                    exit(1);
+                }
+                // set background flag
+                if (cmd[i][0] == '&' && i != 0)
+                    background = 1;
+                else {
+                    // set redirect flag input
+                    if (cmd[i][0] == '<') {
+                        inredir = 1;
+                        input = resolve(cmd[i+1]);
+                    }
+                    // set redirect flag output
+                    if (cmd[i][0] == '>') {
+                        oredir = 1;
+                        output = resolve(cmd[i+1]);
+                    }
+                    cmd[i] = NULL;  // NULL terminates command, otherwise execv will try to execute > as a param
+                    break;
+                }
+                // set pipe flag here, this will probably need more to it
+                if (cmd[i][0] == '|') {
+                    pipe = 1;
+                }
+
+            } // end of IsSpecial() check
+
+            if (cmd[i][0] == '$')
+                strncpy(cmd[i],expand(cmd[i]), 255);
+            if (strcmp(cmd[i],"NULL") == 0) {
+                cmd[i] = NULL;
+                break;          //NULL is last arg, so no need to keep looping
+            }
+        } // end of FOR loop
+
+        // print new args and redirects for debugging
+        printf("New args: \'%s\'", cmd[0]);
+        for (i=1;i<count;i++) {
+            printf(", \'%s\'", cmd[i]);
+        }
+        printf("\nRedirect to/from: %s/%s\n", output, input);
 
         // if input redirects
+        if (inredir) {
+            int fd = open(input, O_RDONLY);
+            close(STDIN_FILENO);
+            dup(fd);
+            close(fd);
+        }
 
         // if output redirects
+        if (oredir) {
+            int fd = open(output, O_CREAT|O_WRONLY, 0600);
+            close(STDOUT_FILENO);
+            dup(fd);
+            close(fd);
+        }
 
         execv(cmd[0], cmd);
         printf("Problem executing %s\n", cmd[0]);
         exit(1);
-    }
+    } // end of child process
     else {
         //Parent
         waitpid(pid, &status, 0);
     }
-
 }
-
-
-/*
-Part 6: I/O Redirection
-Once the shell can handle simple execution, you'll need to add the ability
-to redirect input and output from and to files. The following rules describe
-the expected behavior, note there does not have to be whitespace between the
-command/file and the redirection symbol.
-
-• CMD > FILE
-    ◦ CMD redirects its output to FILE
-    ◦ Create FILE if it does not exist
-    ◦ Overwrite FILE if it does exist
-• CMD < FILE
-    ◦ CMD receives input from FILE
-    ◦ Signal an error if FILE does not exist or is not a file
-• Signal an error for the following
-    ◦ CMD <
-    ◦ < FILE
-    ◦ <
-    ◦ CMD >
-    ◦ > FILE
-    ◦ >
-*/
 
 
 
@@ -408,8 +409,8 @@ several ways this can be encountered:
 
 
 /*
-Part 9: Built-ins
-• exit
+Part 9: Built-ins -- currently in parse(), may need to be moved
+• exit  -- works!
     ◦ Terminates your running shell process and prints “Exiting Shell...”
     ◦ Example
         dennis@linprog3 :: /home/grads/dennis/cop4610t => exit

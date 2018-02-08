@@ -9,10 +9,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
-#include <sys/types.h>
 #include <unistd.h>
-#include <sys/wait.h>
 #include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/time.h>
 
 typedef enum {false, true} bool;
 
@@ -20,10 +22,10 @@ typedef enum {false, true} bool;
 int isSpecial(char c);
 void parse(char* line);
 char* expand(char* envVar);
-void execute(char** cmd/*, char* path = getenv("HOME")*/);
+void execute(char** cmd, char* path);
 int count(char* path);
 char* resolve(char* path);
-
+int isDir(const char *path);
 
 
 int main() {
@@ -32,7 +34,7 @@ int main() {
     char *machine = getenv("MACHINE");
     char *pwd;
 
-    char* test="../";
+    char* test="../";                                                                      //REMOVE LATER
     char* c;
     c=resolve(test);
     printf("%s\n", c);
@@ -69,7 +71,6 @@ void parse(char* line) {
     args = (char**)calloc(256, sizeof(char*));
     for (i=0;i<256;i++)
     args[i] = (char*)calloc(256,sizeof(char));
-
     // parsing into a list of arguments
     for (i=0;i<strlen(line);i++) {
         while (isspace(line[i])) {
@@ -110,13 +111,15 @@ void parse(char* line) {
         exit(0);
     }
     else if (strcmp(args[0], "cd") == 0) {
+        char* rpath = resolve(args[1]);
         if (index > 3)                                  // "cd" "path" "NULL"
             printf("Error: Too many arguments.\n");
-        else {
-            //char* rpath = resolve(args[1]);
-            //if ( valid directory )
-            //    setenv("PWD", rpath);
+        else if (isDir(rpath)) {
+            setenv("PWD", rpath, 1);
+            chdir(rpath);
         }
+        else
+            printf("Error: Please enter a valid directory.\n");
     }
     else if (strcmp(args[0], "echo") == 0) {
         int invalid = 0;
@@ -138,22 +141,37 @@ void parse(char* line) {
         }
     }
     else if (strcmp(args[0], "etime") == 0) {
-
+        struct timeval start, end;
+        gettimeofday(&start,NULL);
+        execute(args+1, NULL);
+        gettimeofday(&end,NULL);
+        time_t sec = end.tv_sec - start.tv_sec;
+        time_t usec = end.tv_usec - start.tv_usec;
+        printf("Elapsed time: %i.%06is\n", sec, usec);
     }
     else if (strcmp(args[0], "io") == 0) {
-
+        /*
+        TODO: IO HERE
+        */
     }
     else {
-        execute(args);
+        execute(args, NULL);
     }
-
 
     // free memory
     for (i = 0; i < 256; i++)
-    free(args[i]);
+        free(args[i]);
     free(args);
 
 }  // end of parse function
+
+// Returns nonzero value if path points to a valid directory
+int isDir(const char *path) {
+   struct stat statbuf;
+   if (stat(path, &statbuf) != 0)
+       return 0;
+   return S_ISDIR(statbuf.st_mode);
+}
 
 
 // Returns expanded environmental variable when given a string (ex: "$HOME")
@@ -171,20 +189,14 @@ char* resolve(char* path) {
     //copies working directory
     char* temp;
     temp=(char*)malloc(200);
-
     char * cwd;
     cwd = (char*)malloc(200);
-
     char* dir;
     dir=(char*)malloc(1);
-
     int i, j, k;
     int track;
-
     i=0;
-
     /*if command that must be located $PATH do stuff here*/
-
     if(path[0]=='~'){
         strcpy(temp, getenv("HOME"));
         i=1;
@@ -192,13 +204,11 @@ char* resolve(char* path) {
     else{
         strcpy(temp, getenv("PWD"));
     }
-
     //if absolute path (e.g. pathname begins with /) update PWD to change directory
     if(path[0]=='/'){
         strcpy(cwd, path);
         return cwd;
     }
-
     else{
         while(i<strlen(path)){
             //copy path over until first /
@@ -216,14 +226,11 @@ char* resolve(char* path) {
                     }
                     if(k==track)
                     break;
-
                 }
             }
-
             //if going down a directory (e.g. cd directory)
             else if(path[i]!='.'){
                 //add on the directory to the current working directory.
-
                 //strcpy(cwd, temp);
                 if(i==0||path[i]=='/'){
                     strcat(cwd, "/");
@@ -235,7 +242,6 @@ char* resolve(char* path) {
             i++;
         } //end while loop
     } //end else statement
-
     if(strcmp(path, "../") && strcmp(path, "..")){
         strcat(temp, cwd);  //copy final temp into current working directory
         return temp;
@@ -246,7 +252,6 @@ char* resolve(char* path) {
         return cwd;
     }
 }  //end function
-
 
 //count the number of /'s in the path---WORKS PROPERLY
 int count(char* path) {
@@ -261,7 +266,7 @@ int count(char* path) {
 }
 
 
-void execute(char** cmd/*, char* path*/) {
+void execute(char** cmd, char* path) {
     //char** is array of command and args (if any)
     // the command being executed should always be cmd[0]
     // char** cmd is a copy of args, so we can change it however we want
@@ -269,29 +274,27 @@ void execute(char** cmd/*, char* path*/) {
     int status;
     int count = 0;
 
-    int inredir = 0;    // input redirect flag
-    int oredir = 0;     // output redirect flag
-    int pipe = 0;       // pipe flag
-    int background = 0; // background flag
-    int error = 0;      // error flag
+    int inredir = 0;            // input redirect flag
+    int oredir = 0;             // output redirect flag
+    int pipe = 0;               // pipe flag
+    int background = 0;         // background flag
+    int error = 0;              // error flag
 
-    char* input = NULL;        // input redirection filepath
-    char* output = NULL;       // output redirection filepath
+    char* input = NULL;         // input redirection filepath
+    char* output = NULL;        // output redirection filepath
 
     int i;
     for (i=0;i<256;i++) {
         count++;
-        // If path can be resolved, resolve path and update cmd array
-
-        //char* temp = resolve(cmd[i]);
-        //if (temp != NULL) {
-        //    strncpy(cmd[i],temp,strlen(temp));
-        //}
 
         // if is isSpecial
         if (isSpecial(cmd[i][0])) {
             // Check Syntax
-            if (cmd[i][0] != '&' && (i == 0 || strcmp(cmd[i+1],"NULL") == 0)) {
+            if (error == 0 && cmd[i][0] != '&' && (i == 0 || strcmp(cmd[i+1],"NULL") == 0)) {
+                printf("Error: Invalid syntax.\n");
+                error = 1;
+            }
+            else if (error == 0 && isSpecial(cmd[i-1][0])) {
                 printf("Error: Invalid syntax.\n");
                 error = 1;
             }
@@ -312,7 +315,8 @@ void execute(char** cmd/*, char* path*/) {
             }
             // set pipe flag here, this will probably need more to it
             if (cmd[i][0] == '|') {
-                pipe = 1;
+                pipe++;
+                //cmd[i] = NULL; This will give a seg fault :D
             }
 
         } // end of IsSpecial() check
@@ -326,6 +330,7 @@ void execute(char** cmd/*, char* path*/) {
         }
     } // end of FOR loop
     // Put null after first redirect character to mark end of command and start of redirection
+    // This is so execv doesn't try to grab the special chars & filepath as parameters
     if (inredir != 0 && oredir != 0) {
         if (inredir < oredir)
             cmd[inredir] = NULL;
@@ -337,7 +342,10 @@ void execute(char** cmd/*, char* path*/) {
     else if (oredir != 0 && inredir == 0)
         cmd[oredir] = NULL;
 
+    if (error)
+        return;
 
+    /* Fun with Forks */
     pid_t pid = fork();
     if (pid == -1) {
         //Error
@@ -345,16 +353,20 @@ void execute(char** cmd/*, char* path*/) {
     }
     else if (pid == 0) {
         //Child
-
         // print new args and redirects for debugging
         printf("New args: \'%s\'", cmd[0]);
         for (i=1;i<count;i++) {
             printf(", \'%s\'", cmd[i]);
         }
         printf("\n");
-        //printf("\nRedirect to/from: %s -/- %s\n", output, input);
-        if (error)
-            exit(1);
+
+        if (background) {
+
+            printf("Background processing yayyyyy\n");
+
+            exit(0);
+        }
+
         // if input redirects
         if (inredir) {
             int fd = open(input, O_RDONLY);
@@ -369,19 +381,52 @@ void execute(char** cmd/*, char* path*/) {
 
         // if output redirects
         if (oredir) {
-            int fd = open(output, O_CREAT|O_WRONLY|O_TRUNC, 0600);
+            int fd = open(output, O_CREAT|O_RDWR|O_TRUNC, 0600);
             close(STDOUT_FILENO);
             dup(fd);
             close(fd);
         }
 
-        execv(cmd[0], cmd);
-        printf("Problem executing %s\n", cmd[0]);
-        exit(1);
+        //handle commands like ls, etc.
+        char* test=getenv("PATH");
+        char* temp;
+        temp=(char*)malloc(strlen(test));
+        int k=0;
+        int x=0;
+        for(k; k < strlen(test); k++){
+            if(test[k]==':'){
+                k++;
+                strcat(temp, "/");
+                strcat(temp, cmd[0]);
+                printf("%s  ", temp);
+                if(access(temp, F_OK)==0)
+                    execv(temp, cmd);
+                else{
+                    x=0;
+                    memset(temp, '\0', strlen(temp));
+
+                    if(k==strlen(test)-1){
+                    printf("Error: Command not found.\n");
+                    exit(1);
+                    }
+                }
+            }
+            temp[x]=test[k];
+            x++;
+        }
+        free(temp);
+
     } // end of child process
     else {
         //Parent
-        waitpid(pid, &status, 0);
+        if (background == 0) {
+            // Wait on Child
+            waitpid(pid, &status, 0);
+        }
+    //return;
+        // Else keep going while child does stuff in the background
+        //waitpid(pid, &status, 0);
+
     }
 }
 

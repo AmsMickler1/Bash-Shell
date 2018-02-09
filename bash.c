@@ -184,8 +184,10 @@ char* expand(char* envVar) {
 }
 
 
+
 //resolve function definition---needs to account for cascading ../ with itself and other directories
 char* resolve(char* path) {
+
     //copies working directory
     char* temp;
     temp=(char*)malloc(200);
@@ -195,8 +197,9 @@ char* resolve(char* path) {
     dir=(char*)malloc(1);
     int i, j, k;
     int track;
+    int FLAG=0;
     i=0;
-    /*if command that must be located $PATH do stuff here*/
+
     if(path[0]=='~'){
         strcpy(temp, getenv("HOME"));
         i=1;
@@ -204,6 +207,8 @@ char* resolve(char* path) {
     else{
         strcpy(temp, getenv("PWD"));
     }
+
+    strcpy(cwd, temp);
     //if absolute path (e.g. pathname begins with /) update PWD to change directory
     if(path[0]=='/'){
         strcpy(cwd, path);
@@ -211,48 +216,63 @@ char* resolve(char* path) {
     }
     else{
         while(i<strlen(path)){
+
             //copy path over until first /
             if(path[i]!='/'){
                 dir[0]=path[i];
             }
             if(dir[0]=='.' && path[i+1]=='.'){
-                track=count(temp);    //will count slashes in current directory
+
+                if(isalpha(path[i-2])){
+                track=count(cwd);}
+                else
+                track=count(temp);   //will count slashes in current directory
                 //copy one less directory
                 k=0;
-                for(j=0; j < strlen(temp); j++){
+                for(j=0; j < strlen(cwd); j++){
                     cwd[j]=temp[j];
                     if(cwd[j]=='/'){
                         k++;
                     }
-                    if(k==track)
+                    if(k==track){
+                        FLAG=1;
+                        cwd[j]='\0';
+                        //i++;
                     break;
+                    }
                 }
             }
             //if going down a directory (e.g. cd directory)
             else if(path[i]!='.'){
                 //add on the directory to the current working directory.
                 //strcpy(cwd, temp);
-                if(i==0||path[i]=='/'){
+                if(i==0 ||path[i]=='/'&& (cwd[strlen(cwd)-1]!='/')){
                     strcat(cwd, "/");
+
                 }
-                if(path[i]!='/')
+                if(path[i]!='/'){
                     strcat(cwd, dir);
+
+                }
+
+
             }
-            //increment i
+            if(FLAG==1){
+                strcpy(temp, cwd);
+                temp[strlen(cwd)]='\0';
+                FLAG=0;
+            }
+            //increment
+            dir[0]='0';
             i++;
         } //end while loop
     } //end else statement
-    if(strcmp(path, "../") && strcmp(path, "..")){
-        strcat(temp, cwd);  //copy final temp into current working directory
-        return temp;
-    }
-    else{
+    {
         while(cwd[strlen(cwd)-1]=='/')
         cwd[strlen(cwd)-1]='\0';
         return cwd;
     }
 }  //end function
-
 //count the number of /'s in the path---WORKS PROPERLY
 int count(char* path) {
     int i;
@@ -261,10 +281,8 @@ int count(char* path) {
         if(path[i]=='/')
         j++;
     }
-
     return j;
 }
-
 
 void execute(char** cmd, char* path) {
     //char** is array of command and args (if any)

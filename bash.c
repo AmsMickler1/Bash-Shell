@@ -18,6 +18,13 @@
 
 typedef enum {false, true} bool;
 
+typedef struct {
+    int process[100];
+    int finished[100];
+    int size;
+    char command[256][256];
+} ExQueue;
+
 
 int isSpecial(char c);
 void parse(char* line);
@@ -26,18 +33,26 @@ void execute(char** cmd, char* path);
 int count(char* path);
 char* resolve(char* path);
 int isDir(const char *path);
+char * catcat(char ** b, int elements);
 
+ExQueue ExQ;
 
 int main() {
     char input[256];            // user input will never be longer than 255 chars
     char *user = getenv("USER");
     char *machine = getenv("MACHINE");
     char *pwd;
+    int status;
 
     char* test="../";                                                                      //REMOVE LATER
     char* c;
     c=resolve(test);
     printf("%s\n", c);
+
+    int j;
+    ExQ.size = 0;
+    for (j = 0; j < 100; j++)   // initialize all spots in queue to "finished"
+        ExQ.finished[j] = 2;
 
     do {
         // Grab PWD var here so it updates every loop
@@ -47,6 +62,8 @@ int main() {
 
         parse(input);
         // do stuff in parse
+
+
 
     } while(1);     //if exit is entered parse will close the shell
 }
@@ -98,15 +115,16 @@ void parse(char* line) {
     strncpy(args[index-1],"NULL", 4);
 
     // prints list of args for debugging purposes.
-    printf("Args: \'%s\'", args[0]);
-    for (i=1;i<index;i++) {
-        printf(", \'%s\'", args[i]);
-    }
-    printf("\n");
+    //printf("Args: \'%s\'", args[0]);
+    //for (i=1;i<index;i++) {
+    //    printf(", \'%s\'", args[i]);
+    //}
+    //printf("\n");
 
 
     /* BUILT INS */
     if (strcmp(args[0], "exit") == 0) {
+
         printf("Exiting shell...\n");
         exit(0);
     }
@@ -216,7 +234,6 @@ char* resolve(char* path) {
     }
     else{
         while(i<strlen(path)){
-
             //copy path over until first /
             if(path[i]!='/'){
                 dir[0]=path[i];
@@ -248,14 +265,10 @@ char* resolve(char* path) {
                 //strcpy(cwd, temp);
                 if(i==0 ||path[i]=='/'&& (cwd[strlen(cwd)-1]!='/')){
                     strcat(cwd, "/");
-
                 }
                 if(path[i]!='/'){
                     strcat(cwd, dir);
-
                 }
-
-
             }
             if(FLAG==1){
                 strcpy(temp, cwd);
@@ -272,7 +285,13 @@ char* resolve(char* path) {
         cwd[strlen(cwd)-1]='\0';
         return cwd;
     }
+
+    free(temp);
+    free(cwd);
+    free(dir);
+
 }  //end function
+
 //count the number of /'s in the path---WORKS PROPERLY
 int count(char* path) {
     int i;
@@ -305,6 +324,11 @@ void execute(char** cmd, char* path) {
     for (i=0;i<256;i++) {
         count++;
 
+        if (cmd[0][0] == '&') {   // ignores leading &
+            cmd++;
+            count--;
+        }
+
         // if is isSpecial
         if (isSpecial(cmd[i][0])) {
             // Check Syntax
@@ -313,6 +337,10 @@ void execute(char** cmd, char* path) {
                 error = 1;
             }
             else if (error == 0 && isSpecial(cmd[i-1][0])) {
+                printf("Error: Invalid syntax.\n");
+                error = 1;
+            }
+            else if (cmd[i][0] == '&' && strcmp(cmd[i+1], "NULL") != 0) {
                 printf("Error: Invalid syntax.\n");
                 error = 1;
             }
@@ -338,6 +366,9 @@ void execute(char** cmd, char* path) {
             }
 
         } // end of IsSpecial() check
+        if (cmd[i][0] == '~') {
+            strncpy(cmd[i], resolve(cmd[i]), 255);
+        }
         if (cmd[i][0] == '$') {
             if (expand(cmd[i]) != NULL)
                 strncpy(cmd[i],expand(cmd[i]), 255);
@@ -349,16 +380,28 @@ void execute(char** cmd, char* path) {
     } // end of FOR loop
     // Put null after first redirect character to mark end of command and start of redirection
     // This is so execv doesn't try to grab the special chars & filepath as parameters
+    char * str = catcat(cmd, count-2);  // for background processing
+
     if (inredir != 0 && oredir != 0) {
         if (inredir < oredir)
             cmd[inredir] = NULL;
         else
             cmd[oredir] = NULL;
+        count -= 4;
     }
-    else if (inredir != 0 && oredir == 0)
+    else if (inredir != 0 && oredir == 0) {
         cmd[inredir] = NULL;
-    else if (oredir != 0 && inredir == 0)
+        count =- 2;
+    }
+    else if (oredir != 0 && inredir == 0) {
         cmd[oredir] = NULL;
+        count -= 2;
+    }
+
+    if (background){
+        cmd[count-2] = NULL;
+        count-=2;
+    }
 
     if (error)
         return;
@@ -372,18 +415,11 @@ void execute(char** cmd, char* path) {
     else if (pid == 0) {
         //Child
         // print new args and redirects for debugging
-        printf("New args: \'%s\'", cmd[0]);
-        for (i=1;i<count;i++) {
-            printf(", \'%s\'", cmd[i]);
-        }
-        printf("\n");
-
-        if (background) {
-
-            printf("Background processing yayyyyy\n");
-
-            exit(0);
-        }
+        //printf("New args: \'%s\'", cmd[0]);
+        //for (i=1;i<count;i++) {
+        //    printf(", \'%s\'", cmd[i]);
+        //}
+        //printf("\n");
 
         // if input redirects
         if (inredir) {
@@ -404,6 +440,10 @@ void execute(char** cmd, char* path) {
             dup(fd);
             close(fd);
         }
+
+        // do pipes here //
+
+
 
         //handle commands like ls, etc.
         char* test=getenv("PATH");
@@ -437,18 +477,62 @@ void execute(char** cmd, char* path) {
     } // end of child process
     else {
         //Parent
+
+        // check if background stuff is done
+        int j;
+        for (j = 0; j < ExQ.size; j++) {
+            if (waitpid(ExQ.process[j], &status, WNOHANG) != 0) { // if background process has finished
+                printf("Finished [%i]\t[%s]\n", j, ExQ.command[j]);
+                ExQ.finished[j] = 0;
+                // if finished move others up in Queue
+                int k = j+1;
+                while (ExQ.finished[k-1] == 0) {
+                // while the process before me is finished but I am not
+                    ExQ.finished[k-1] = ExQ.finished[k];
+                    strcpy(ExQ.command[k-1], ExQ.command[k]);
+                    ExQ.process[k-1] = ExQ.process[k];
+                    k++;
+                }
+                j--;
+                ExQ.size--;
+            }
+        }
+
         if (background == 0) {
             // Wait on Child
             waitpid(pid, &status, 0);
         }
-    //return;
-        // Else keep going while child does stuff in the background
-        //waitpid(pid, &status, 0);
+        else { // Else keep going while child does stuff in the background
+            printf("%i\n", count);
+            // queue next background process
+            ExQ.process[ExQ.size] = pid;
+            ExQ.finished[ExQ.size] = 1;
+            strncpy(ExQ.command[ExQ.size], str, 255);   // str was created above before I nuked things out of the cmd array
+            free(str);
 
+            printf("Queued [%i]\t[%i]\n", ExQ.size, pid);
+            ExQ.size++;
+        }
     }
 }
 
+// concatenates char ** into one long string
+char * catcat(char ** b, int elements){
+    char *t;
+    int i, size = 0;
+    for(i=0; i<elements;i++){
+        size += strlen(b[i]) + 1;
+    }
+    t = (char *)malloc(size*sizeof(char));
+    for(i = 0; i<elements; i++){
+        strcat(t,b[i]);
+        if(i < elements -1)
+            strcat(t," ");
+    }
+    printf("\n%s\n", t);
 
+    return t;
+}
 
 /*
 Part 7: Pipes

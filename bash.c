@@ -29,7 +29,7 @@ typedef struct {
 int isSpecial(char c);
 void parse(char* line);
 char* expand(char* envVar);
-void execute(char** cmd, char* path);
+void execute(char** cmd);
 int count(char* path);
 char* resolve(char* path);
 int isDir(const char *path);
@@ -58,12 +58,14 @@ int main() {
         // Grab PWD var here so it updates every loop
         pwd = getenv("PWD");
         printf("%s@%s::%s$ ", user, machine, pwd);
+        fflush(stdin);
+        fflush(stdout);
         fgets(input, 256, stdin);              // grabs whole line including \n
 
         parse(input);
         // do stuff in parse
-
-
+        printf("FUCK");
+        fflush(stdout);
 
     } while(1);     //if exit is entered parse will close the shell
 }
@@ -114,17 +116,29 @@ void parse(char* line) {
     // solution: make last argument null arg for execv() later on
     strncpy(args[index-1],"NULL", 4);
 
-    // prints list of args for debugging purposes.
-    //printf("Args: \'%s\'", args[0]);
-    //for (i=1;i<index;i++) {
-    //    printf(", \'%s\'", args[i]);
-    //}
-    //printf("\n");
-
-
     /* BUILT INS */
     if (strcmp(args[0], "exit") == 0) {
-
+        int j;
+        int status;
+        while (ExQ.size != 0) {
+            for (j = 0; j < ExQ.size; j++) {
+                if (waitpid(ExQ.process[j], &status, WNOHANG) != 0) { // if background process has finished
+                    printf("[%i]\t[%s]\n", j, ExQ.command[j]);
+                    ExQ.finished[j] = 0;
+                    // if finished move others up in Queue
+                    int k = j+1;
+                    while (ExQ.finished[k-1] == 0) {
+                    // while the process before me is finished but I am not
+                        ExQ.finished[k-1] = ExQ.finished[k];
+                        strcpy(ExQ.command[k-1], ExQ.command[k]);
+                        ExQ.process[k-1] = ExQ.process[k];
+                        k++;
+                    }
+                    j--;
+                    ExQ.size--;
+                }
+            }
+        }
         printf("Exiting shell...\n");
         exit(0);
     }
@@ -161,22 +175,18 @@ void parse(char* line) {
     else if (strcmp(args[0], "etime") == 0) {
         struct timeval start, end;
         gettimeofday(&start,NULL);
-        execute(args+1, NULL);
+        execute(args+1);
         gettimeofday(&end,NULL);
         time_t sec = end.tv_sec - start.tv_sec;
         time_t usec = end.tv_usec - start.tv_usec;
         printf("Elapsed time: %i.%06is\n", sec, usec);
     }
-    else if (strcmp(args[0], "io") == 0) {
-        /*
-        TODO: IO HERE
-        */
-    }
+
     else {
-        execute(args, NULL);
+        execute(args);
     }
 
-    // free memory
+    //free memory
     for (i = 0; i < 256; i++)
         free(args[i]);
     free(args);
@@ -303,7 +313,7 @@ int count(char* path) {
     return j;
 }
 
-void execute(char** cmd, char* path) {
+void execute(char** cmd) {
     //char** is array of command and args (if any)
     // the command being executed should always be cmd[0]
     // char** cmd is a copy of args, so we can change it however we want
@@ -316,6 +326,7 @@ void execute(char** cmd, char* path) {
     int pipe = 0;               // pipe flag
     int background = 0;         // background flag
     int error = 0;              // error flag
+    int io = 0;                 // io command flag
 
     char* input = NULL;         // input redirection filepath
     char* output = NULL;        // output redirection filepath
@@ -327,6 +338,12 @@ void execute(char** cmd, char* path) {
         if (cmd[0][0] == '&') {   // ignores leading &
             cmd++;
             count--;
+        }
+
+        if (strcmp(cmd[0], "io") == 0) {
+            io = 1;
+            cmd++;
+            //count--;
         }
 
         // if is isSpecial
@@ -414,12 +431,6 @@ void execute(char** cmd, char* path) {
     }
     else if (pid == 0) {
         //Child
-        // print new args and redirects for debugging
-        //printf("New args: \'%s\'", cmd[0]);
-        //for (i=1;i<count;i++) {
-        //    printf(", \'%s\'", cmd[i]);
-        //}
-        //printf("\n");
 
         // if input redirects
         if (inredir) {
@@ -482,7 +493,7 @@ void execute(char** cmd, char* path) {
         int j;
         for (j = 0; j < ExQ.size; j++) {
             if (waitpid(ExQ.process[j], &status, WNOHANG) != 0) { // if background process has finished
-                printf("Finished [%i]\t[%s]\n", j, ExQ.command[j]);
+                printf("[%i]\t[%s]\n", j, ExQ.command[j]);
                 ExQ.finished[j] = 0;
                 // if finished move others up in Queue
                 int k = j+1;
@@ -500,7 +511,63 @@ void execute(char** cmd, char* path) {
 
         if (background == 0) {
             // Wait on Child
+
+            char file[50];
+            FILE *f;
+            FILE *asdf;
+            if (io) {
+                sprintf(file, "/proc/%i/io", pid);
+                pid_t pid2 = fork();
+                if (pid2 == -1) {
+                    //Error
+                    exit(1);
+                }
+               else if (pid2 == 0) {
+                   //Child
+                   char ** argstemp;
+                   argstemp = (char**)calloc(4, sizeof(char*));
+                   for (i=0;i<4;i++)
+                       argstemp[i] = (char*)calloc(10,sizeof(char));
+                    strcpy(argstemp[0], "cat");
+                    strcpy(argstemp[1], ">");
+                    strcpy(argstemp[2], "procio");
+                    argstemp[3] = NULL;
+                    execute(argstemp);
+                    exit(0);
+               }
+               else
+                waitpid(pid2, &status, 0);
+
+
+            }
+
             waitpid(pid, &status, 0);
+
+            if (io) {
+                pid_t pid2 = fork();
+                if (pid2 == -1) {
+                    //Error
+                    exit(1);
+                }
+               else if (pid2 == 0) {
+                    //Child
+                    char ** argstemp;
+                    argstemp = (char**)calloc(3, sizeof(char*));
+                    for (i=0;i<3;i++)
+                        argstemp[i] = (char*)calloc(10,sizeof(char));
+                    strcpy(argstemp[0], "cat");
+                    strcpy(argstemp[1],"procio");
+                    strcpy(argstemp[2],NULL);
+                    execute(argstemp);
+                    exit(0);
+                }
+                else
+                    waitpid(pid2, &status, 0);
+
+
+            }
+
+
         }
         else { // Else keep going while child does stuff in the background
             printf("%i\n", count);
@@ -510,9 +577,10 @@ void execute(char** cmd, char* path) {
             strncpy(ExQ.command[ExQ.size], str, 255);   // str was created above before I nuked things out of the cmd array
             free(str);
 
-            printf("Queued [%i]\t[%i]\n", ExQ.size, pid);
+            printf("[%i]\t[%i]\n", ExQ.size, pid);
             ExQ.size++;
         }
+
     }
 }
 
@@ -520,17 +588,16 @@ void execute(char** cmd, char* path) {
 char * catcat(char ** b, int elements){
     char *t;
     int i, size = 0;
-    for(i=0; i<elements;i++){
+    for(i=0; i<elements;i++) {
         size += strlen(b[i]) + 1;
     }
     t = (char *)malloc(size*sizeof(char));
-    for(i = 0; i<elements; i++){
+    for(i = 0; i<elements; i++) {
         strcat(t,b[i]);
         if(i < elements -1)
             strcat(t," ");
     }
     printf("\n%s\n", t);
-
     return t;
 }
 
@@ -552,82 +619,10 @@ there does not have to be whitespace between the commands and the symbol):
     ◦ |
     ◦ CMD |
     ◦ | CMD
-*/
 
 
 
 
-/*
-Part 8: Background Processing
-You will need to handle execution for background processes. There are
-several ways this can be encountered:
-• CMD &
-    ◦ Execute CMD in the background
-    ◦ When execution starts, print
-        [position of CMD in the execution queue] [CMD's PID]
-    ◦ When execution completes, print
-        [position of CMD in the execution queue]+ [CMD's command line]
-• & CMD
-    ◦ Executes CMD in the foreground
-    ◦ Ignores &
-• & CMD &
-    ◦ Behaves the sames as CMD &
-    ◦ Ignores first &
-• CMD1 | CMD2 &
-    ◦ Execute CMD1 | CMD2 in the background
-    ◦ When execution starts, print
-        [position in the background execution queue] [CMD1's PID] [CMD2's PID]
-    ◦ When execution completes, print
-        [position in the background execution queue]+ [CMD1 | CMD2 command line]
-• CMD > FILE &
-    ◦ Follow rules for output redirection and background processing
-• CMD < FILE &
-    ◦ Follow rules for input redirection and background processing
-• Signal an error for anything else
-    ◦ Examples includes
-        ▪ CMD1 & | CMD2 &
-        ▪ CMD1 & | CMD2
-        ▪ CMD1 > & FILE
-        ▪ CMD1 < & FILE
-
-*/
-
-
-
-
-/*
-Part 9: Built-ins -- currently in parse(), may need to be moved
-• exit  -- works!
-    ◦ Terminates your running shell process and prints “Exiting Shell...”
-    ◦ Example
-        dennis@linprog3 :: /home/grads/dennis/cop4610t => exit
-        Exiting Shell....
-        (shell terminates)
-• cd PATH
-    ◦ Changes the present working directory according to the path resolution
-        above
-    ◦ If no arguments are supplied, it behaves as if $HOME is the argument
-    ◦ Signal an error if more than one argument is present
-    ◦ Signal an error if the target is not a directory
-• echo
-    ◦ Outputs whatever the user specifies
-    ◦ For each argument passed to echo
-        ▪ If the argument does not begin with “$”
-            • Output the argument without modification
-        ▪ If the argument begins with “$”
-            • Look up the argument in the list of environment variables
-            • Print the value if it exists
-            • Signal an error if it does not exist
-• etime COMMAND
-    ◦ Record the start time using gettimeofday()
-    ◦ execute the rest of the arguments as per typical execution
-        ▪ You don’t have to worry about nesting with other built-ins
-    ◦ Record the end time using gettimeofday()
-    ◦ Output the elapsed time in the format of s.us where s is the number of
-        seconds and us is the number of micro seconds (0 padded)
-    ◦ Example
-        dennis@linprog3 :: /home/grads => etime sleep 1
-        Elapsed Time: 1.000000s
 • io COMMAND
     ◦ Execute the supplied commands
         ▪ Again you don’t have to worry about nesting with other built-ins
